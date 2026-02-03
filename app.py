@@ -27,14 +27,12 @@ def home():
   position:fixed;
   inset:0;
   background:#000;
-  display:none;              /* shown via JS */
+  display:none;
   place-items:center;
   z-index:9999;
 }
 .blackScreen.on{ display:grid; }
-.blackText{
-  text-align:center;
-}
+.blackText{ text-align:center; }
 .blackText h1{
   font-size:48px;
   color:var(--light-red);
@@ -49,7 +47,7 @@ def home():
   color:#fff;
 }
 
-/* ---------- EXISTING STYLES ---------- */
+/* ---------- BASE ---------- */
 body{
   margin:0;
   min-height:100vh;
@@ -130,13 +128,6 @@ body{
   line-height:1.4;
   color:var(--light-red);
   min-height:120px;
-}
-
-.textBackdrop{
-  background: rgba(255, 245, 248, 0.65);
-  backdrop-filter: blur(6px);
-  border-radius: 16px;
-  padding: 18px 20px;
 }
 
 .line{
@@ -301,7 +292,7 @@ body{
       </div>
     </div>
 
-    <div class="main textBackdrop" id="main"></div>
+    <div class="main" id="main"></div>
 
     <div class="choices scene1" id="choices">
       <button class="btn" id="opt1"></button>
@@ -419,9 +410,12 @@ function showMsg(t){
 }
 modal.onclick=()=>modal.classList.remove('on');
 
-/* ---------- RUNAWAY (SCENE 1 ONLY) ---------- */
+/* ---------- RUNAWAY (SCENE 1 ONLY) FIXED FOR RENDER ---------- */
 const opt1=document.getElementById('opt1');
 const opt2=document.getElementById('opt2');
+
+let runawayEnabled = false;
+let nearHandler = null;
 
 function runAwayFar(){
   const box=choices.getBoundingClientRect();
@@ -429,13 +423,12 @@ function runAwayFar(){
 
   const maxX=box.width-opt2.offsetWidth-12;
   const maxY=box.height-opt2.offsetHeight-12;
-
-  const minDist = 240;
+  const minDist = 240; // keep away from opt1 to avoid misclick
 
   let tries=0;
-  while(tries++ < 160){
-    const x=12+Math.random()*maxX;
-    const y=12+Math.random()*maxY;
+  while(tries++ < 200){
+    const x=12+Math.random()*Math.max(0,maxX);
+    const y=12+Math.random()*Math.max(0,maxY);
 
     const vx = box.left + x;
     const vy = box.top + y;
@@ -453,7 +446,17 @@ function runAwayFar(){
   opt2.style.top=(box.height*0.20)+'px';
 }
 
+function pointerNear(x, y){
+  const r2 = opt2.getBoundingClientRect();
+  const cx = r2.left + r2.width/2;
+  const cy = r2.top + r2.height/2;
+  const dist = Math.hypot(x - cx, y - cy);
+  return dist < 130; // "near" radius
+}
+
 function enableRunaway(on){
+  runawayEnabled = on;
+
   if(on){
     choices.classList.remove('final');
     choices.classList.add('scene1');
@@ -462,15 +465,40 @@ function enableRunaway(on){
     opt2.style.transform="none";
     runAwayFar();
 
-    opt2.onmouseenter=runAwayFar;
-    opt2.onmousedown=e=>{e.preventDefault();runAwayFar();};
-    opt2.ontouchstart=e=>{e.preventDefault();runAwayFar();};
-    opt2.onclick=e=>{e.preventDefault();runAwayFar();};
+    // Block click and move away
+    opt2.onclick = (e)=>{ e.preventDefault(); runAwayFar(); };
+    opt2.onmouseenter = ()=>runAwayFar();
+    opt2.onmousedown = (e)=>{ e.preventDefault(); runAwayFar(); };
+    opt2.ontouchstart = (e)=>{ e.preventDefault(); runAwayFar(); };
+
+    // NEW: move away when pointer gets close (works great on Render)
+    nearHandler = (e)=>{
+      if(!runawayEnabled) return;
+      let x, y;
+      if(e.touches && e.touches[0]){
+        x = e.touches[0].clientX;
+        y = e.touches[0].clientY;
+      }else{
+        x = e.clientX;
+        y = e.clientY;
+      }
+      if(pointerNear(x,y)) runAwayFar();
+    };
+
+    document.addEventListener("mousemove", nearHandler, {passive:true});
+    document.addEventListener("touchmove", nearHandler, {passive:true});
+    document.addEventListener("touchstart", nearHandler, {passive:true});
   }else{
     opt2.onmouseenter=null;
     opt2.onmousedown=null;
     opt2.ontouchstart=null;
-    opt2.onclick=null;
+
+    if(nearHandler){
+      document.removeEventListener("mousemove", nearHandler);
+      document.removeEventListener("touchmove", nearHandler);
+      document.removeEventListener("touchstart", nearHandler);
+      nearHandler = null;
+    }
   }
 }
 
@@ -503,7 +531,6 @@ function scene0Run(){
 
 async function scene1Run(){
   scene = 1;
-  // IMPORTANT: not changing anything inside scene 1 behavior
   small.textContent='';
   hideCounters();
   hideChoices();
@@ -553,8 +580,12 @@ async function scene3Run(){
     "I thank every god there is and there was that I am lucky enough to have you."
   ], 1600);
 
-  // photos roll-in after scene 3 text
   rollInMontage();
+
+  // auto-advance 2s after photos enter
+  setTimeout(()=> {
+    if(scene === 3) scene4Run();
+  }, 2000);
 }
 
 async function scene4Run(){
@@ -596,8 +627,8 @@ async function scene5Run(){
     note.textContent="No gimmicks";
     note.style.fontFamily="system-ui, Arial";
     note.style.fontSize="12px";
-    note.style.fontWeight="700";
-    note.style.opacity="0.8";
+    note.style.fontWeight="800";
+    note.style.opacity="0.85";
     note.style.marginTop="6px";
     note.style.textAlign="center";
 
@@ -632,7 +663,7 @@ async function scene6Run(){
 opt1.onclick = ()=>{ if(scene===1) scene2Run(); };
 opt2.onclick = (e)=>{ if(scene===1){ e.preventDefault(); runAwayFar(); } };
 
-/* ---------- SCENE 0 CLICK (THIS FIXES YOUR ISSUE) ---------- */
+/* ---------- SCENE 0 CLICK ---------- */
 scene0.addEventListener("click", ()=>{
   if(scene !== 0) return;
   scene0.classList.remove("on");
@@ -644,7 +675,7 @@ scene0.addEventListener("touchstart", ()=>{
   scene1Run();
 }, {passive:true});
 
-/* ---------- TAP TO ADVANCE (NO AUTO TIMERS) ---------- */
+/* ---------- TAP TO ADVANCE ---------- */
 document.getElementById('tap').onclick = (e)=>{
   if(e.target.tagName === "BUTTON") return;
   if(modal.classList.contains("on")) return;
@@ -652,7 +683,7 @@ document.getElementById('tap').onclick = (e)=>{
   if(scene === 2) scene3Run();
   else if(scene === 3) scene4Run();
   else if(scene === 4) scene5Run();
-  else if(scene === 5) scene6Run();   // tap anywhere (not buttons) goes to The End
+  else if(scene === 5) scene6Run();
 };
 
 /* ---------- START ---------- */
